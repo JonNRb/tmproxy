@@ -1,0 +1,16 @@
+{
+  "name": "tmproxy",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "http-proxy": "^1.15.1",
+    "randbytes": "0.0.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "LGPL"
+}
