@@ -5,7 +5,8 @@
   "main": "index.js",
   "dependencies": {
     "http-proxy": "^1.15.1",
-    "randbytes": "0.0.1"
+    "randbytes": "0.0.1",
+    "websocket": "^1.0.23"
   },
   "devDependencies": {},
   "scripts": {
