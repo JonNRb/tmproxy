@@ -93,9 +93,11 @@ RouteManager.prototype.add = function (target) {
 
     route = this.routes[target]
 
-    route.once('destroy', function (route) {
+    route.once('destroy', (route) => {
       delete this.route_keys[route.route_key]
       delete this.routes[target]
+
+      console.log('destroyed route', route)
     })
 
   } else if (route.initialized === true) {
@@ -128,6 +130,16 @@ RouteManager.prototype.add = function (target) {
 }
 
 
+RouteManager.prototype.remove = function (target) {
+
+  var route = this.routes[target]
+  if (route !== undefined) {
+    this.routes[target].decrease()
+  }
+
+}
+
+
 function Server (proxy_port, control_port) {
 
   const size = 1024
@@ -140,30 +152,16 @@ function Server (proxy_port, control_port) {
 
   this.proxy_server   = http.createServer(b(this.proxy_request))
   this.control_server = http.createServer(
-    (request, response) => { response.writeHead(404); response.end() }
-  )
+    (request, response) => {
+      console.warn(new Date, '[control] Bad request from', request.origin)
+      response.writeHead(404)
+      response.end()
+    })
   this.control_socket = new websocket.server({ httpServer: this.control_server})
   this.control_socket.on('request', b(this.control_request))
 
   this.proxy_server.listen(proxy_port)
   this.control_server.listen(control_port)
-
-
-  this.routes.add('http://10.77.77.3:8000/')
-    .then(function (route_key) {
-      console.log('route added for tstream at', route_key)
-    })
-    .catch(function (err) {
-      console.error('error adding route for tstream', err)
-    })
-
-  this.routes.add('http://10.77.77.74/')
-    .then(function (route_key) {
-      console.log('route added for remote at', route_key)
-    })
-    .catch(function (err) {
-      console.error('error adding route for remote', err)
-    })
 
 }
 
@@ -173,7 +171,8 @@ Server.prototype.proxy_request = function (request, response) {
   var e = this.url_filter.exec(request.url)
 
   function bad_request () {
-    console.log('bad request', request.url)
+    console.log(new Date, '[proxy]   Bad request from', request.origin,
+                                                  'to', request.url)
     setTimeout(() => response.writeHead({'Content-Length': '0'}, 404), 200)
   }
 
@@ -187,11 +186,14 @@ Server.prototype.proxy_request = function (request, response) {
     return bad_request()
   }
 
-  console.log('proxy', target, e[2])
+  console.log(new Date, '[proxy]   Request to', target)
 
   request.url = e[2]
   this.proxy.web(request, response, { target: target }, function (err) {
-    console.error(target, e[2], err)
+    console.warn(new Date, '[proxy]   Proxy error to', target, err)
+    if (err.stack !== undefined) {
+      console.warn('Traceback:', err.stack)
+    }
   })
 
 }
@@ -199,10 +201,62 @@ Server.prototype.proxy_request = function (request, response) {
 
 Server.prototype.control_request = function (request) {
 
+  var connection = request.accept('tmproxy-protocol', request.origin);
+
+  var connection_state = { refs:  []
+                         , alive: true
+                         }
+
+
+  connection.on('message', (message) => {
+    if (message.type === 'utf8') {
+
+      console.log(new Date, '[control] Message from', request.origin)
+
+      try {
+        var payload = JSON.parse(message.utf8Data)
+      } catch (err) {
+        console.warn(new Date, '[control] Bad message from', request.origin,
+                                                        ':', message.utf8Data)
+        if (err.stack) {
+          console.warn('Traceback:', err.stack)
+        }
+
+        return
+      }
+
+      console.log(new Date, '[control] Adding route to', payload.target)
+
+      this.routes.add(payload.target)
+        .then((route_key) => {
+          console.log(new Date, '[control] ', route_key, '-->', payload.target)
+          connection.sendUTF(JSON.stringify({ route_key: route_key
+                                            , error:     null
+                                            }))
+          connection_state.refs.push(payload.target)
+        })
+        .catch((err) => {
+          connection.sendUTF(JSON.stringify({ route_key: null
+                                            , error:     err
+                                            }))
+          console.error('[control] Error adding route to', payload.target)
+          if (err.stack) {
+            console.error('Traceback:', err.stack)
+          }
+        })
+
+    }
+  })
+
+  connection.on('close', (reason_code, description) => {
+    connection_state.alive = false
+    while (connection_state.refs.length !== 0) {
+      var ref = connection_state.refs.pop()
+      this.routes.remove(ref)
+    }
+  })
+
 }
 
-
-
-//s.random_generator.get().then((b) => console.log(b.toString('hex')))
 
 var s = new Server(2000, 2001)
