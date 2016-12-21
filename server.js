@@ -173,7 +173,7 @@ Server.prototype.proxy_request = function (request, response) {
   function bad_request () {
     console.log(new Date, '[proxy]   Bad request from', request.origin,
                                                   'to', request.url)
-    setTimeout(() => response.writeHead({'Content-Length': '0'}, 404), 200)
+    setTimeout(() => response.writeHead(404, {'Content-Length': '0'}), 200)
   }
 
   if (e == null) {
