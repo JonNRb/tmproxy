@@ -6,6 +6,25 @@ const create_http_proxy = require('http-proxy').createProxyServer
     , randbytes         = require('randbytes')
     , websocket         = require('websocket')
 
+const CONFIG = require('./config')
+
+
+function bind_date_to_logs () {
+  function date_bind (old_log) {
+    function new_log () {
+      var a = Array.prototype.slice.call(arguments, 0)
+      return old_log.apply(this, [new Date().toString()].concat(a))
+    }
+    return new_log
+  }
+
+  console.log = date_bind(console.log)
+  console.warn = date_bind(console.warn)
+  console.error = date_bind(console.error)
+}
+
+bind_date_to_logs()
+
 
 function RandomGenerator (size) {
   this.size    = size
@@ -153,11 +172,13 @@ function Server (proxy_port, control_port) {
   this.proxy_server   = http.createServer(b(this.proxy_request))
   this.control_server = http.createServer(
     (request, response) => {
-      console.warn(new Date, '[control] Bad request from', request.origin)
+      console.warn('[control] Bad request from', request.origin)
       response.writeHead(404)
       response.end()
     })
-  this.control_socket = new websocket.server({ httpServer: this.control_server})
+  this.control_socket = new websocket.server(
+                          { httpServer: this.control_server }
+                        )
   this.control_socket.on('request', b(this.control_request))
 
   this.proxy_server.listen(proxy_port)
@@ -171,8 +192,8 @@ Server.prototype.proxy_request = function (request, response) {
   var e = this.url_filter.exec(request.url)
 
   function bad_request () {
-    console.log(new Date, '[proxy]   Bad request from', request.origin,
-                                                  'to', request.url)
+    console.log('[proxy]   Bad request from', request.origin,
+                                        'to', request.url)
     setTimeout(() => response.writeHead(404, {'Content-Length': '0'}), 200)
   }
 
@@ -186,11 +207,11 @@ Server.prototype.proxy_request = function (request, response) {
     return bad_request()
   }
 
-  console.log(new Date, '[proxy]   Request to', target)
+  console.log('[proxy]   Request to', target)
 
   request.url = e[2]
   this.proxy.web(request, response, { target: target }, function (err) {
-    console.warn(new Date, '[proxy]   Proxy error to', target, err)
+    console.warn('[proxy]   Proxy error to', target, err)
     if (err.stack !== undefined) {
       console.warn('Traceback:', err.stack)
     }
@@ -211,13 +232,13 @@ Server.prototype.control_request = function (request) {
   connection.on('message', (message) => {
     if (message.type === 'utf8') {
 
-      console.log(new Date, '[control] Message from', request.origin)
+      console.log('[control] Message from', request.origin)
 
       try {
         var payload = JSON.parse(message.utf8Data)
       } catch (err) {
-        console.warn(new Date, '[control] Bad message from', request.origin,
-                                                        ':', message.utf8Data)
+        console.warn('[control] Bad message from', request.origin,
+                                              ':', message.utf8Data)
         if (err.stack) {
           console.warn('Traceback:', err.stack)
         }
@@ -225,11 +246,11 @@ Server.prototype.control_request = function (request) {
         return
       }
 
-      console.log(new Date, '[control] Adding route to', payload.target)
+      console.log('[control] Adding route to', payload.target)
 
       this.routes.add(payload.target)
         .then((route_key) => {
-          console.log(new Date, '[control] ', route_key, '-->', payload.target)
+          console.log('[control] ', route_key, '-->', payload.target)
           connection.sendUTF(JSON.stringify({ route_key: route_key
                                             , error:     null
                                             }))
@@ -259,4 +280,13 @@ Server.prototype.control_request = function (request) {
 }
 
 
-var s = new Server(2000, 2001)
+if (CONFIG.drop_credentials != null) {
+  console.log('Dropping credentials',
+              CONFIG.drop_credentials.user, CONFIG.drop_credentials.group)
+  process.setuid(CONFIG.drop_credentials.user)
+  process.setgid(CONFIG.drop_credentials.group)
+}
+
+
+var s = new Server(CONFIG.proxy_port, CONFIG.control_port)
+
