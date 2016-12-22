@@ -9,22 +9,6 @@ const create_http_proxy = require('http-proxy').createProxyServer
 const CONFIG = require('./config')
 
 
-function bind_date_to_logs () {
-  function date_bind (old_log) {
-    function new_log () {
-      var a = Array.prototype.slice.call(arguments, 0)
-      return old_log.apply(this, [new Date().toString()].concat(a))
-    }
-    return new_log
-  }
-
-  console.log = date_bind(console.log)
-  console.warn = date_bind(console.warn)
-  console.error = date_bind(console.error)
-}
-
-bind_date_to_logs()
-
 
 function RandomGenerator (size) {
   this.size    = size
@@ -277,6 +261,26 @@ Server.prototype.control_request = function (request) {
     }
   })
 
+}
+
+
+function bind_date_to_logs () {
+  function date_bind (old_log) {
+    function new_log () {
+      var a = Array.prototype.slice.call(arguments, 0)
+      return old_log.apply(this, [new Date().toString()].concat(a))
+    }
+    return new_log
+  }
+
+  console.log = date_bind(console.log)
+  console.warn = date_bind(console.warn)
+  console.error = date_bind(console.error)
+}
+
+
+if (CONFIG.date_log_messages === true) {
+  bind_date_to_logs()
 }
 
 

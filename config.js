@@ -3,4 +3,5 @@ module.exports = { proxy_port:   2000
                  , drop_credentials: { user:  'tmproxy'
                                      , group: 'tmproxy'
                                      }
+                 , date_log_messages: true
                  }
