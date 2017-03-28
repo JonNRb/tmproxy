@@ -75,6 +75,7 @@ class Client {
 
       this.socket.on('connect', connection => {
         this.connection = new Connection(connection)
+        this.connection.on('close', () => { this.connection = null })
         resolve(this.connection)
       })
 
