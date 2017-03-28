@@ -1,65 +1,90 @@
+'use strict'
+
+const EventEmitter = require('events').EventEmitter
+
 const websocket = require('websocket')
 
 
-var tmproxy = process.argv[2]
-  , target  = process.argv[3]
+class Connection extends EventEmitter {
 
-var err_immediately = false
-if (tmproxy === undefined) {
-  err_immediately = true
-  console.error('First parameter is tmproxy websocket')
-}
-if (target === undefined) {
-  err_immediately = true
-  console.error('Second parameter is target')
-}
-if (err_immediately === true) {
-  process.exit(1)
-}
+  constructor (connected_socket) {
 
+    super()
 
-var client = new websocket.client()
+    this.socket = connected_socket
+    this._l = false
 
-client.on('connectFailed', function (err) {
-  console.warn('Connection failed:', err)
-  if (err.stack) {
-    console.warn('Traceback:', err.stack)
+    this.socket.on('close', () => this.emit('close'))
+    this.socket.on('error', err => this.emit('error', err))
+
   }
-  process.exit(1)
-})
 
-client.on('connect', function (connection) {
-  connection.on('error', function (err) {
-    console.error('Connection error:', err)
-    if (err.stack) {
-      console.error('Traceback:', err.stack)
+  add (target) {
+
+    if (this._l) {
+      return Promise.reject('already adding target')
     }
-    process.exit(1)
-  })
 
-  connection.on('close', function () {
-    console.warn('Connection closed by remote')
-    process.exit(1)
-  })
+    return new Promise((resolve, reject) => {
 
-  connection.on('message', function (message) {
-    if (message.type === 'utf8') {
-      var response = JSON.parse(message.utf8Data)
-      if (response.error) {
-        console.warn('Error from server:', response.error)
-        process.exit(1)
-      } else if (response.route_key == null) {
-        console.error('Empty route_key', response.route_key)
-      } else {
-        console.log(response.route_key)
-      }
-    } else {
-      console.warn('Received something other than UTF8 data')
-      process.exit(1)
+      this.socket.once('message', message => {
+
+        this._l = false
+
+        if (message.type === 'utf8') {
+          var response = JSON.parse(message.utf8Data)
+          if (response.error) {
+            reject(response.error)
+          } else if (response.route_key == null) {
+            reject('empty route key')
+          } else {
+            resolve(response.route_key)
+          }
+        } else {
+          reject('received something other than UTF8 data')
+        }
+
+      })
+
+      this.socket.sendUTF(JSON.stringify({ target: target }))
+
+    })
+
+  }
+
+}
+
+
+class Client {
+
+  constructor () {
+    this.socket = new websocket.client()
+    this.connection = null
+  }
+
+
+  connect (server) {
+
+    if (this.connection !== null) {
+      return Promise.reject('existing connection')
     }
-  })
 
-  connection.sendUTF(JSON.stringify({ target: target }))
-})
+    return new Promise((resolve, reject) => {
 
-client.connect(tmproxy, 'tmproxy-protocol')
+      this.socket.on('connectFailed', reject)
+
+      this.socket.on('connect', connection => {
+        this.connection = new Connection(connection)
+        resolve(this.connection)
+      })
+
+      this.socket.connect(server, 'tmproxy-protocol')
+
+    })
+
+  }
+
+}
+
+
+module.exports.Client = Client
