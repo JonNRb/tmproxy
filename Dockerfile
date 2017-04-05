@@ -1,6 +1,6 @@
 from node:alpine
 
-run npm install -g npm
+#run npm install -g npm
 
 add . /app
 workdir /app
